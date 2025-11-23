@@ -9,6 +9,7 @@ import {
 import { UUIDType } from './uuid.js';
 import { PostType } from './post.js';
 import { ProfileType } from './profile.js';
+import { parseRelationUsers } from '../loaders.js';
 
 export const UserType = new GraphQLObjectType({
   name: 'User',
@@ -30,44 +31,25 @@ export const UserType = new GraphQLObjectType({
     },
     userSubscribedTo: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
-      resolve: (parent: any, _, { loaders }) => {
-        if (parent.userSubscribedTo && Array.isArray(parent.userSubscribedTo)) {
-          if (parent.userSubscribedTo.length > 0) {
-            const first = parent.userSubscribedTo[0];
-
-            if (first?.author) {
-              return parent.userSubscribedTo.map((sub: any) => sub.author);
-            }
-
-            if (first?.id && first?.name !== undefined) {
-              return parent.userSubscribedTo;
-            }
-          } else {
-            return [];
-          }
+      resolve: async (parent: any, _, { loaders }) => {
+        const parsed = parseRelationUsers(parent.userSubscribedTo, 'authorId');
+        if (parsed) {
+          return parsed;
         }
-        return loaders.subscribedToLoader.load(parent.id);
+
+        return loaders.userSubscribedToLoader.load(parent.id);
       },
     },
+
     subscribedToUser: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
-      resolve: (parent: any, _, { loaders }) => {
-        if (parent.subscribedToUser && Array.isArray(parent.subscribedToUser)) {
-          if (parent.subscribedToUser.length > 0) {
-            const first = parent.subscribedToUser[0];
-
-            if (first?.subscriber) {
-              return parent.subscribedToUser.map((sub: any) => sub.subscriber);
-            }
-
-            if (first?.id && first?.name !== undefined) {
-              return parent.subscribedToUser;
-            }
-          } else {
-            return [];
-          }
+      resolve: async (parent: any, _, { loaders }) => {
+        const parsed = parseRelationUsers(parent.subscribedToUser, 'subscriberId');
+        if (parsed) {
+          return parsed;
         }
-        return loaders.subscribersLoader.load(parent.id);
+
+        return loaders.userSubscribersLoader.load(parent.id);
       },
     },
   }),
