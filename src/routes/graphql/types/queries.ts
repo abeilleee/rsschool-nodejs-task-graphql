@@ -16,7 +16,7 @@ export const RootQuery = new GraphQLObjectType({
   fields: {
     users: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
-      resolve: async (_, __, { prisma, loaders }, info: GraphQLResolveInfo) => {
+      resolve: async (_, __, { prisma }, info: GraphQLResolveInfo) => {
         const parsedInfo = parseResolveInfo(info) as ResolveTree | null;
         const userFields = parsedInfo?.fieldsByTypeName?.User;
 
@@ -31,117 +31,9 @@ export const RootQuery = new GraphQLObjectType({
           include.subscribedToUser = true;
         }
 
-        const users = await prisma.user.findMany(
+        return await prisma.user.findMany(
           Object.keys(include).length > 0 ? { include } : {},
         );
-
-        const authorIdsToLoad = new Set<string>();
-        const subscriberIdsToLoad = new Set<string>();
-
-        users.forEach((user: any) => {
-          if (user.userSubscribedTo && Array.isArray(user.userSubscribedTo)) {
-            if (
-              user.userSubscribedTo.length > 0 &&
-              user.userSubscribedTo[0]?.authorId &&
-              !user.userSubscribedTo[0]?.author
-            ) {
-              user.userSubscribedTo.forEach((sub: any) => {
-                if (sub.authorId) authorIdsToLoad.add(sub.authorId);
-              });
-            }
-          }
-          if (user.subscribedToUser && Array.isArray(user.subscribedToUser)) {
-            if (
-              user.subscribedToUser.length > 0 &&
-              user.subscribedToUser[0]?.subscriberId &&
-              !user.subscribedToUser[0]?.subscriber
-            ) {
-              user.subscribedToUser.forEach((sub: any) => {
-                if (sub.subscriberId) subscriberIdsToLoad.add(sub.subscriberId);
-              });
-            }
-          }
-        });
-
-        const loadedAuthors = new Map<string, any>();
-        const loadedSubscribers = new Map<string, any>();
-
-        if (authorIdsToLoad.size > 0) {
-          const authors = await Promise.all(
-            Array.from(authorIdsToLoad).map((id) => loaders.userLoader.load(id)),
-          );
-          Array.from(authorIdsToLoad).forEach((id, index) => {
-            if (authors[index]) loadedAuthors.set(id, authors[index]);
-          });
-        }
-
-        if (subscriberIdsToLoad.size > 0) {
-          const subscribers = await Promise.all(
-            Array.from(subscriberIdsToLoad).map((id) => loaders.userLoader.load(id)),
-          );
-          Array.from(subscriberIdsToLoad).forEach((id, index) => {
-            if (subscribers[index]) loadedSubscribers.set(id, subscribers[index]);
-          });
-        }
-
-        const transformedUsers = users.map((user: any) => {
-          const transformed: any = { ...user };
-
-          if (user.userSubscribedTo && Array.isArray(user.userSubscribedTo)) {
-            if (user.userSubscribedTo.length > 0 && user.userSubscribedTo[0]?.author) {
-              transformed.userSubscribedTo = user.userSubscribedTo.map(
-                (sub: any) => sub.author,
-              );
-            } else if (
-              user.userSubscribedTo.length > 0 &&
-              user.userSubscribedTo[0]?.authorId
-            ) {
-              transformed.userSubscribedTo = user.userSubscribedTo
-                .map((sub: any) => loadedAuthors.get(sub.authorId))
-                .filter((u: any) => u !== undefined);
-            } else {
-              transformed.userSubscribedTo = user.userSubscribedTo;
-            }
-          }
-
-          if (user.subscribedToUser && Array.isArray(user.subscribedToUser)) {
-            if (
-              user.subscribedToUser.length > 0 &&
-              user.subscribedToUser[0]?.subscriber
-            ) {
-              transformed.subscribedToUser = user.subscribedToUser.map(
-                (sub: any) => sub.subscriber,
-              );
-            } else if (
-              user.subscribedToUser.length > 0 &&
-              user.subscribedToUser[0]?.subscriberId
-            ) {
-              transformed.subscribedToUser = user.subscribedToUser
-                .map((sub: any) => loadedSubscribers.get(sub.subscriberId))
-                .filter((u: any) => u !== undefined);
-            } else {
-              transformed.subscribedToUser = user.subscribedToUser;
-            }
-          }
-
-          return transformed;
-        });
-
-        transformedUsers.forEach((user) => {
-          loaders.userLoader.prime(user.id, user);
-          if (user.userSubscribedTo) {
-            user.userSubscribedTo.forEach((subUser: any) => {
-              loaders.userLoader.prime(subUser.id, subUser);
-            });
-          }
-          if (user.subscribedToUser) {
-            user.subscribedToUser.forEach((subUser: any) => {
-              loaders.userLoader.prime(subUser.id, subUser);
-            });
-          }
-        });
-
-        return transformedUsers;
       },
     },
     user: {
