@@ -3,70 +3,63 @@ import {
   GraphQLString,
   GraphQLInt,
   GraphQLBoolean,
+  GraphQLFloat,
   GraphQLList,
   GraphQLNonNull,
+  GraphQLScalarType,
+  Kind,
 } from 'graphql';
+import { UUIDType } from './uuid.js';
 
-// Типы
-const UserType = new GraphQLObjectType({
-  name: 'User',
-  fields: () => ({
-    id: { type: GraphQLInt },
-    email: { type: GraphQLString },
-    name: { type: GraphQLString },
-    surname: { type: GraphQLString },
-    subscribedToUserIds: {
-      type: new GraphQLList(GraphQLInt),
-      resolve: (parent) => parent.subscribedToUserIds || [],
-    },
-    subscribers: {
-      type: new GraphQLList(UserType),
-      resolve: (parent, _, { loaders }) => {
-        return loaders.userLoader.loadMany(parent.subscribedToUserIds || []);
-      },
-    },
-    subscribedTo: {
-      type: new GraphQLList(UserType),
-      resolve: (parent, _, { loaders }) => {
-        return loaders.subscribedToLoader.load(parent.id);
-      },
-    },
-    posts: {
-      type: new GraphQLList(PostType),
-      resolve: (parent, _, { loaders }) => {
-        return loaders.userPostsLoader.load(parent.id);
-      },
-    },
-    profile: {
-      type: ProfileType,
-      resolve: (parent, _, { loaders }) => {
-        return loaders.userProfileLoader.load(parent.id);
-      },
-    },
-    likedPosts: {
-      type: new GraphQLList(PostType),
-      resolve: (parent, _, { loaders }) => {
-        return loaders.userLikedPostsLoader.load(parent.id);
-      },
-    },
-  }),
+export const MemberTypeIdType = new GraphQLScalarType({
+  name: 'MemberTypeId',
+  description: 'MemberType ID custom scalar type',
+  serialize(value) {
+    return String(value);
+  },
+  parseValue(value) {
+    return String(value);
+  },
+  parseLiteral(ast) {
+    if (ast.kind === Kind.STRING) {
+      return ast.value;
+    }
+    return null;
+  },
 });
 
 const MemberTypeType = new GraphQLObjectType({
   name: 'MemberType',
   fields: {
     id: { type: GraphQLString },
-    discount: { type: GraphQLInt },
+    discount: { type: GraphQLFloat },
     postsLimitPerMonth: { type: GraphQLInt },
   },
 });
 
+const PostType = new GraphQLObjectType({
+  name: 'Post',
+  fields: () => ({
+    id: { type: GraphQLString },
+    title: { type: GraphQLString },
+    content: { type: GraphQLString },
+    authorId: { type: GraphQLString },
+    author: {
+      type: UserType,
+      resolve: (parent, _, { loaders }) => {
+        return loaders.userLoader.load(parent.authorId);
+      },
+    },
+  }),
+});
+
 const ProfileType = new GraphQLObjectType({
   name: 'Profile',
-  fields: {
-    id: { type: GraphQLInt },
-    userId: { type: GraphQLInt },
-    bio: { type: GraphQLString },
+  fields: () => ({
+    id: { type: GraphQLString },
+    isMale: { type: GraphQLBoolean },
+    yearOfBirth: { type: GraphQLInt },
+    userId: { type: GraphQLString },
     memberTypeId: { type: GraphQLString },
     user: {
       type: UserType,
@@ -82,29 +75,54 @@ const ProfileType = new GraphQLObjectType({
         });
       },
     },
-  },
+  }),
 });
 
-const PostType = new GraphQLObjectType({
-  name: 'Post',
-  fields: {
-    id: { type: GraphQLInt },
-    title: { type: GraphQLString },
-    content: { type: GraphQLString },
-    authorId: { type: GraphQLInt },
-    author: {
-      type: UserType,
+export const UserType = new GraphQLObjectType({
+  name: 'User',
+  fields: () => ({
+    id: { type: GraphQLString },
+    name: { type: GraphQLString },
+    balance: { type: GraphQLFloat },
+    profile: {
+      type: ProfileType,
       resolve: (parent, _, { loaders }) => {
-        return loaders.userLoader.load(parent.authorId);
+        return loaders.userProfileLoader.load(parent.id);
       },
     },
-    likedBy: {
+    posts: {
+      type: new GraphQLList(PostType),
+      resolve: (parent, _, { loaders }) => {
+        return loaders.userPostsLoader.load(parent.id);
+      },
+    },
+
+    subscribers: {
       type: new GraphQLList(UserType),
       resolve: (parent, _, { loaders }) => {
-        return loaders.postLikedByLoader.load(parent.id);
+        return loaders.subscribersLoader.load(parent.id);
       },
     },
-  },
+    subscribedTo: {
+      type: new GraphQLList(UserType),
+      resolve: (parent, _, { loaders }) => {
+        return loaders.subscribedToLoader.load(parent.id);
+      },
+    },
+
+    userSubscribedTo: {
+      type: new GraphQLList(UserType),
+      resolve: (parent, _, { loaders }) => {
+        return loaders.subscribedToLoader.load(parent.id);
+      },
+    },
+    subscribedToUser: {
+      type: new GraphQLList(UserType),
+      resolve: (parent, _, { loaders }) => {
+        return loaders.subscribersLoader.load(parent.id);
+      },
+    },
+  }),
 });
 
 // Запросы
@@ -120,7 +138,7 @@ export const RootQuery = new GraphQLObjectType({
     user: {
       type: UserType,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLInt) },
+        id: { type: new GraphQLNonNull(UUIDType) },
       },
       resolve: async (_, { id }, { prisma }) => {
         return await prisma.user.findUnique({
@@ -137,7 +155,7 @@ export const RootQuery = new GraphQLObjectType({
     post: {
       type: PostType,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLInt) },
+        id: { type: new GraphQLNonNull(UUIDType) },
       },
       resolve: async (_, { id }, { prisma }) => {
         return await prisma.post.findUnique({
@@ -154,7 +172,7 @@ export const RootQuery = new GraphQLObjectType({
     memberType: {
       type: MemberTypeType,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLString) },
+        id: { type: new GraphQLNonNull(MemberTypeIdType) },
       },
       resolve: async (_, { id }, { prisma }) => {
         return await prisma.memberType.findUnique({
@@ -171,7 +189,7 @@ export const RootQuery = new GraphQLObjectType({
     profile: {
       type: ProfileType,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLInt) },
+        id: { type: new GraphQLNonNull(UUIDType) },
       },
       resolve: async (_, { id }, { prisma }) => {
         return await prisma.profile.findUnique({
@@ -189,35 +207,33 @@ export const RootMutation = new GraphQLObjectType({
     createUser: {
       type: UserType,
       args: {
-        email: { type: new GraphQLNonNull(GraphQLString) },
         name: { type: new GraphQLNonNull(GraphQLString) },
-        surname: { type: new GraphQLNonNull(GraphQLString) },
+        balance: { type: new GraphQLNonNull(GraphQLFloat) },
       },
-      resolve: async (_, { email, name, surname }, { prisma }) => {
+      resolve: async (_, { name, balance }, { prisma }) => {
         return await prisma.user.create({
-          data: { email, name, surname, subscribedToUserIds: [] },
+          data: { name, balance },
         });
       },
     },
-    updateUser: {
+    changeUser: {
       type: UserType,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLInt) },
-        email: { type: GraphQLString },
+        id: { type: new GraphQLNonNull(GraphQLString) },
         name: { type: GraphQLString },
-        surname: { type: GraphQLString },
+        balance: { type: GraphQLFloat },
       },
-      resolve: async (_, { id, email, name, surname }, { prisma }) => {
+      resolve: async (_, { id, name, balance }, { prisma }) => {
         return await prisma.user.update({
           where: { id },
-          data: { email, name, surname },
+          data: { name, balance },
         });
       },
     },
     deleteUser: {
       type: GraphQLBoolean,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLInt) },
+        id: { type: new GraphQLNonNull(GraphQLString) },
       },
       resolve: async (_, { id }, { prisma }) => {
         await prisma.user.delete({
@@ -229,35 +245,33 @@ export const RootMutation = new GraphQLObjectType({
     subscribeTo: {
       type: UserType,
       args: {
-        userId: { type: new GraphQLNonNull(GraphQLInt) },
-        subscriberId: { type: new GraphQLNonNull(GraphQLInt) },
+        userId: { type: new GraphQLNonNull(GraphQLString) },
+        authorId: { type: new GraphQLNonNull(GraphQLString) },
       },
-      resolve: async (_, { userId, subscriberId }, { prisma }) => {
-        await prisma.user.update({
-          where: { id: subscriberId },
+      resolve: async (_, { userId, authorId }, { prisma }) => {
+        await prisma.subscribersOnAuthors.create({
           data: {
-            subscribedToUser: {
-              connect: { id: userId },
-            },
+            authorId: authorId,
+            subscriberId: userId,
           },
         });
         return await prisma.user.findUnique({
-          where: { id: subscriberId },
+          where: { id: userId },
         });
       },
     },
     unsubscribeFrom: {
       type: GraphQLBoolean,
       args: {
-        userId: { type: new GraphQLNonNull(GraphQLInt) },
-        subscriberId: { type: new GraphQLNonNull(GraphQLInt) },
+        userId: { type: new GraphQLNonNull(GraphQLString) },
+        authorId: { type: new GraphQLNonNull(GraphQLString) },
       },
-      resolve: async (_, { userId, subscriberId }, { prisma }) => {
-        await prisma.user.update({
-          where: { id: subscriberId },
-          data: {
-            subscribedToUser: {
-              disconnect: { id: userId },
+      resolve: async (_, { userId, authorId }, { prisma }) => {
+        await prisma.subscribersOnAuthors.delete({
+          where: {
+            subscriberId_authorId: {
+              subscriberId: userId,
+              authorId: authorId,
             },
           },
         });
@@ -269,7 +283,7 @@ export const RootMutation = new GraphQLObjectType({
       args: {
         title: { type: new GraphQLNonNull(GraphQLString) },
         content: { type: new GraphQLNonNull(GraphQLString) },
-        authorId: { type: new GraphQLNonNull(GraphQLInt) },
+        authorId: { type: new GraphQLNonNull(GraphQLString) },
       },
       resolve: async (_, { title, content, authorId }, { prisma }) => {
         return await prisma.post.create({
@@ -277,10 +291,10 @@ export const RootMutation = new GraphQLObjectType({
         });
       },
     },
-    updatePost: {
+    changePost: {
       type: PostType,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLInt) },
+        id: { type: new GraphQLNonNull(GraphQLString) },
         title: { type: GraphQLString },
         content: { type: GraphQLString },
       },
@@ -294,7 +308,7 @@ export const RootMutation = new GraphQLObjectType({
     deletePost: {
       type: GraphQLBoolean,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLInt) },
+        id: { type: new GraphQLNonNull(GraphQLString) },
       },
       resolve: async (_, { id }, { prisma }) => {
         await prisma.post.delete({
@@ -303,77 +317,39 @@ export const RootMutation = new GraphQLObjectType({
         return true;
       },
     },
-    likePost: {
-      type: PostType,
-      args: {
-        postId: { type: new GraphQLNonNull(GraphQLInt) },
-        userId: { type: new GraphQLNonNull(GraphQLInt) },
-      },
-      resolve: async (_, { postId, userId }, { prisma }) => {
-        await prisma.post.update({
-          where: { id: postId },
-          data: {
-            likedBy: {
-              connect: { id: userId },
-            },
-          },
-        });
-        return await prisma.post.findUnique({
-          where: { id: postId },
-        });
-      },
-    },
-    unlikePost: {
-      type: PostType,
-      args: {
-        postId: { type: new GraphQLNonNull(GraphQLInt) },
-        userId: { type: new GraphQLNonNull(GraphQLInt) },
-      },
-      resolve: async (_, { postId, userId }, { prisma }) => {
-        await prisma.post.update({
-          where: { id: postId },
-          data: {
-            likedBy: {
-              disconnect: { id: userId },
-            },
-          },
-        });
-        return await prisma.post.findUnique({
-          where: { id: postId },
-        });
-      },
-    },
     createProfile: {
       type: ProfileType,
       args: {
-        userId: { type: new GraphQLNonNull(GraphQLInt) },
+        userId: { type: new GraphQLNonNull(GraphQLString) },
         memberTypeId: { type: new GraphQLNonNull(GraphQLString) },
-        bio: { type: GraphQLString },
+        isMale: { type: new GraphQLNonNull(GraphQLBoolean) },
+        yearOfBirth: { type: new GraphQLNonNull(GraphQLInt) },
       },
-      resolve: async (_, { userId, memberTypeId, bio }, { prisma }) => {
+      resolve: async (_, { userId, memberTypeId, isMale, yearOfBirth }, { prisma }) => {
         return await prisma.profile.create({
-          data: { userId, memberTypeId, bio: bio || '' },
+          data: { userId, memberTypeId, isMale, yearOfBirth },
         });
       },
     },
-    updateProfile: {
+    changeProfile: {
       type: ProfileType,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLInt) },
+        id: { type: new GraphQLNonNull(GraphQLString) },
         memberTypeId: { type: GraphQLString },
-        bio: { type: GraphQLString },
+        isMale: { type: GraphQLBoolean },
+        yearOfBirth: { type: GraphQLInt },
       },
-      resolve: async (_, { id, memberTypeId, bio }, { prisma }) => {
+      resolve: async (_, { id, memberTypeId, isMale, yearOfBirth }, { prisma }) => {
         return await prisma.profile.update({
           where: { id },
-          data: { memberTypeId, bio },
+          data: { memberTypeId, isMale, yearOfBirth },
         });
       },
     },
     deleteProfile: {
       type: GraphQLBoolean,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLInt) },
+        id: { type: new GraphQLNonNull(GraphQLString) },
       },
       resolve: async (_, { id }, { prisma }) => {
         await prisma.profile.delete({
