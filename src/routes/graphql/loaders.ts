@@ -1,6 +1,19 @@
 import DataLoader from 'dataloader';
 import { PrismaClient, User, Post, Profile } from '@prisma/client';
 
+export const parseRelationUsers = (relation: unknown, key: string) => {
+  if (!Array.isArray(relation)) return;
+
+  if (relation.length === 0) return [];
+
+  const first = relation[0];
+
+  if (first) {
+    if (first.id) return relation;
+    if (first[key]) return relation.map((item) => ({ id: item[key] }));
+  }
+};
+
 export function createLoaders(prisma: PrismaClient) {
   const userLoader = new DataLoader<string, User | null>(async (userIds) => {
     const users = await prisma.user.findMany({
@@ -15,7 +28,7 @@ export function createLoaders(prisma: PrismaClient) {
     return userIds.map((id) => userMap.get(id) || null);
   });
 
-  const subscribersLoader = new DataLoader<string, User[]>(async (authorIds) => {
+  const userSubscribersLoader = new DataLoader<string, User[]>(async (authorIds) => {
     const subscriptions = await prisma.subscribersOnAuthors.findMany({
       where: {
         authorId: {
@@ -40,7 +53,7 @@ export function createLoaders(prisma: PrismaClient) {
     return authorIds.map((id) => subscribersByAuthor.get(id) || []);
   });
 
-  const subscribedToLoader = new DataLoader<string, User[]>(async (subscriberIds) => {
+  const userSubscribedToLoader = new DataLoader<string, User[]>(async (subscriberIds) => {
     const subscriptions = await prisma.subscribersOnAuthors.findMany({
       where: {
         subscriberId: {
@@ -131,8 +144,8 @@ export function createLoaders(prisma: PrismaClient) {
 
   return {
     userLoader,
-    subscribersLoader,
-    subscribedToLoader,
+    userSubscribersLoader,
+    userSubscribedToLoader,
     userPostsLoader,
     userProfileLoader,
     postAuthorLoader,
